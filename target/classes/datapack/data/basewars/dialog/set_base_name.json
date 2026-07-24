@@ -1,0 +1,34 @@
+{
+  "type": "minecraft:notice",
+  "title": {
+    "text": "Give the base a name.",
+    "type": "text",
+    "font": "minecraft:default",
+    "bold": false,
+    "italic": false,
+    "underlined": false,
+    "strikethrough": false,
+    "obfuscated": false
+  },
+  "inputs": [
+    {
+      "type": "minecraft:text",
+      "key": "name",
+      "width": 200,
+      "label": "",
+      "label_visible": false,
+      "initial": "Peanut",
+      "max_length": 16
+    }
+  ],
+  "can_close_with_escape": true,
+  "after_action": "close",
+  "action": {
+    "label": "Done",
+    "width": 150,
+    "action": {
+      "type": "minecraft:custom",
+      "id": "set_name"
+    }
+  }
+}
