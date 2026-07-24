@@ -1,4 +1,0 @@
-name: BaseWars
-version: '1.0-SNAPSHOT'
-main: kr.kro.impapins.minecraft.baseWars.BaseWars
-api-version: '26.2'
