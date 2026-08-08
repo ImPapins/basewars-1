@@ -1,6 +1,11 @@
 package kr.kro.impapins.minecraft.baseWars
 
 import com.destroystokyo.paper.event.player.PlayerSetSpawnEvent
+import kr.kro.impapins.minecraft.baseWars.BaseManager.baseHp
+import kr.kro.impapins.minecraft.baseWars.BaseManager.getSpawnBase
+import kr.kro.impapins.minecraft.baseWars.BaseManager.newBase
+import kr.kro.impapins.minecraft.baseWars.CombatManager.isCombating
+import kr.kro.impapins.minecraft.baseWars.CustomDeathReason.*
 import kr.kro.impapins.minecraft.baseWars.TeamManager.getTeam
 import kr.kro.impapins.minecraft.baseWars.TeamManager.isLeader
 import net.kyori.adventure.text.Component
@@ -33,25 +38,49 @@ object PlayerListener : Listener {
         val team = player.getTeam()
 
         if (team == null) {
+            event.joinMessage(null)
             player.kick(Component.text("당신은 팀이 없는 찐따입니다 ㅋㅋ ㅅㄱ"))
+            return
+        }
+
+        if (team.eliminated) {
+            event.joinMessage(null)
+            player.kick(Component.text("당신의 팀은 망했습니다 xx"))
             return
         }
 
         if (!player.hasPlayedBefore()) {
             player.health = 40.0
 
-            val spawn = team.teamSpawnLocation
-
-            if (spawn == null) {
-                team.teamSpawnLocation = player.location
-                TeamManager.save()
-            } else {
-                player.teleport(spawn)
-            }
-
             if (player.isLeader()) {
-                player.inventory.addItem(BaseItem.create())
+                val block = team.teamSpawnLocation!!.clone().add(0.0, 1.0, 0.0).block
+                val location = block.location
+
+                block.type = Material.AIR
+
+                val base = newBase(
+                    location,
+                    BaseInfo(
+                        baseTeam         = team.name,
+                        level            = 1,
+                        inventoryEncoded = emptyList(),
+                        name             = "${team.name} 기지",
+                        hp               = baseHp[1],
+                        spawnLocation    = location.clone().add(0.5, -1.0, 0.5)
+                    )
+                )
+
+                val spawnBases = team.members.associateWith(::getSpawnBase)
+                spawnBases.forEach { (id, spawnBase) ->
+                    if (spawnBase == null) {
+                        base.info.spawnPlayers += id
+                    }
+                }
+
+                BaseManager.save()
             }
+
+            player.teleport(team.teamSpawnLocation!!)
         }
 
         Bukkit.getScoreboardManager()
@@ -71,8 +100,33 @@ object PlayerListener : Listener {
 
         event.droppedExp = player.calculateTotalExperiencePoints()
 
-        val killer = player.killer ?: return
-        if (player.getTeam()?.name == killer.getTeam()?.name) return
+        val reason = player.getData<CustomDeathReason>(makeKey("lastDeathReason"))
+
+        event.deathMessage(
+            when (reason) {
+                SELF_DEATH ->
+                    player.teamDisplayName()
+                        .append(
+                            Component.text(
+                                "이(가) 자살했습니다\n(X를 눌러 조의를 표하시오)"
+                            ).color(NamedTextColor.WHITE)
+                        )
+
+                COMBAT_LEAVE ->
+                    player.teamDisplayName()
+                        .append(
+                            Component.text(
+                                "이(가) 추하게 싸우다가 게임을 나가서 죽었습니다"
+                            ).color(NamedTextColor.WHITE)
+                        )
+
+                else -> event.deathMessage()
+            }
+        )
+
+        player.removeData(makeKey("lastDeathReason"))
+
+        if (!isCombating(player.uniqueId)) return
 
         val head = ItemStack(Material.PLAYER_HEAD)
         val meta = head.itemMeta as SkullMeta
@@ -97,7 +151,7 @@ object PlayerListener : Listener {
                     ?.color(NamedTextColor.DARK_PURPLE)
                     ?.decorate(TextDecoration.BOLD)
                     ?.decoration(TextDecoration.ITALIC, false),
-                Component.text(""),
+                Component.empty(),
                 Component.text(formatted)
                     .color(NamedTextColor.GRAY)
                     .decorate(TextDecoration.ITALIC)

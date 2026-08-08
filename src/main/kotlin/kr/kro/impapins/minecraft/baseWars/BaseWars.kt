@@ -41,13 +41,15 @@ class BaseWars : JavaPlugin() {
         }
 
         val listeners = listOf(
-            CombatManager,
             PlayerListener,
+            CombatManager,
             BaseManager,
             MarkerManager,
             TeamChatListener,
             RecipeManager,
-            ElytraListener
+            ElytraListener,
+            ObsidianDrillListener,
+            StayStillManager
         )
 
         listeners.forEach {
@@ -65,7 +67,8 @@ class BaseWars : JavaPlugin() {
         val commands = listOf(
             // CommandInfo("base", listOf(), BaseCommand),
             CommandInfo("ac", listOf("allchat", "전체채팅", "ㅁㅊ", "전챗", "ㅈㅊ"), AllChatCommand),
-            CommandInfo("basemenu", listOf("bm", "기지메뉴", "ㅠㅡ", "메뉴", "menu", "m", "ㅡ"), BaseMenuCommand)
+            CommandInfo("basemenu", listOf("bm", "기지메뉴", "ㅠㅡ", "메뉴", "menu", "m", "ㅡ"), BaseMenuCommand),
+            CommandInfo("자살", listOf("ㅈㅅ", "wktkf", "wt"), SelfKillCommand)
         )
 
         commands.forEach {
@@ -86,6 +89,8 @@ class BaseWars : JavaPlugin() {
     }
 
     override fun onDisable() {
+        CombatManager.cancelAll()
+
         TeamManager.save()
         BaseManager.save()
 

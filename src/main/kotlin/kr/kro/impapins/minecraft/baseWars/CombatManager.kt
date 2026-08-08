@@ -1,5 +1,6 @@
 package kr.kro.impapins.minecraft.baseWars
 
+import kr.kro.impapins.minecraft.baseWars.TeamManager.getTeam
 import net.kyori.adventure.bossbar.BossBar
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.NamedTextColor
@@ -10,7 +11,6 @@ import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
 import org.bukkit.event.entity.EntityDamageByEntityEvent
 import org.bukkit.event.entity.PlayerDeathEvent
-import org.bukkit.event.player.PlayerQuitEvent
 import org.bukkit.scheduler.BukkitRunnable
 import java.util.UUID
 
@@ -35,6 +35,12 @@ object CombatManager : Listener {
         } ?: false
     }
 
+    fun getCombatingID(id: UUID): UUID? {
+        return combatPlayers[id]?.keys?.firstOrNull {
+            isCombatingWith(id, it)
+        }
+    }
+
     @EventHandler
     fun onCombat(event: EntityDamageByEntityEvent) {
         val player = event.entity
@@ -45,6 +51,7 @@ object CombatManager : Listener {
         } ?: return
 
         if (player !is Player) return
+        if (player.getTeam()?.name == damager.getTeam()?.name) return
 
         val now = System.currentTimeMillis()
 
@@ -169,6 +176,12 @@ object CombatManager : Listener {
             if (isCombatingWith(id, it)) {
                 cancelCombatWith(id, it)
             }
+        }
+    }
+
+    fun cancelAll() {
+        Bukkit.getOnlinePlayers().forEach {
+            cancelCombat(it.uniqueId)
         }
     }
 }

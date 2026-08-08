@@ -9,5 +9,6 @@ data class BaseTeam(
     val color: NamedTextColor,
     val leader: UUID,
     val members: MutableSet<UUID> = mutableSetOf(),
-    var teamSpawnLocation: Location? = null
+    var teamSpawnLocation: Location? = null,
+    var eliminated: Boolean = false
 )

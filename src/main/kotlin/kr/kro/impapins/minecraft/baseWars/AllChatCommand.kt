@@ -23,7 +23,7 @@ object AllChatCommand : BasicCommand {
         Bukkit.broadcast(
             Component.text()
                 .append(Component.text("[전체] "))
-                .append(player.displayName())
+                .append(player.teamDisplayName())
                 .append(Component.text(": "))
                 .append(Component.text(message))
                 .build()

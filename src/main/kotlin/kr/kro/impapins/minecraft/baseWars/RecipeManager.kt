@@ -1,6 +1,9 @@
+@file:Suppress("UnstableApiUsage")
 package kr.kro.impapins.minecraft.baseWars
 
 import com.destroystokyo.paper.profile.ProfileProperty
+import io.papermc.paper.datacomponent.DataComponentTypes
+import kr.kro.impapins.minecraft.baseWars.ObsidianDrillListener.obsidianDrillMineable
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.NamedTextColor
 import net.kyori.adventure.text.format.TextDecoration
@@ -12,13 +15,14 @@ import org.bukkit.event.player.PlayerJoinEvent
 import org.bukkit.inventory.ItemStack
 import org.bukkit.inventory.ShapedRecipe
 import org.bukkit.inventory.meta.SkullMeta
-import java.util.UUID
+import java.util.*
 
 object RecipeManager : Listener {
     fun init() {
         addGoldenHead()
         addBase()
         addBaseCompass()
+        addObsidianDrill()
     }
 
     private fun addGoldenHead() {
@@ -131,10 +135,83 @@ object RecipeManager : Listener {
         Bukkit.addRecipe(recipe)
     }
 
+    private fun addObsidianDrill() {
+        val drill = ItemStack(Material.AMETHYST_SHARD)
+
+        drill.editMeta {
+            it.displayName(
+                Component.text(
+                    "흑요석 드릴",
+                    NamedTextColor.DARK_PURPLE,
+                    TextDecoration.BOLD
+                ).decoration(TextDecoration.ITALIC, false)
+            )
+
+            it.lore(
+                buildList {
+                    add(
+                        Component.text(
+                            "아래 블록을 즉시 파괴할 수 있습니다. 대신, 다른 블록은 파괴할 수 없습니다.",
+                            NamedTextColor.GRAY
+                        ).decoration(TextDecoration.ITALIC, false)
+                    )
+
+                    add(Component.empty())
+
+                    for (block in obsidianDrillMineable) {
+                        add(
+                            Component.text(
+                                "- "
+                            ).append(
+                                Component.translatable(block.translationKey())
+                                    .decoration(TextDecoration.ITALIC, false)
+                                    .color(NamedTextColor.LIGHT_PURPLE)
+                            )
+                        )
+                    }
+
+                    add(Component.empty())
+
+                    add(
+                        Component.text(
+                            "인벤토리를 열고 용암 양동이를 든 상태로 클릭해 연료를 충전할 수 있습니다.",
+                            NamedTextColor.GRAY
+                        ).decoration(TextDecoration.ITALIC, false)
+                    )
+                }
+            )
+
+            it.setMaxStackSize(1)
+        }
+
+        drill.setData(DataComponentTypes.MAX_DAMAGE, 100)
+        drill.setData(DataComponentTypes.DAMAGE, 0)
+
+        drill.setTag(makeKey("obsidianDrill"))
+
+        val recipe = ShapedRecipe(
+            makeKey("obsidianDrillRecipe"),
+            drill
+        )
+
+        recipe.shape(
+            "COC",
+            "OSO",
+            "COC"
+        )
+
+        recipe.setIngredient('O', Material.OBSIDIAN)
+        recipe.setIngredient('S', Material.AMETHYST_SHARD)
+        recipe.setIngredient('C', Material.CRYING_OBSIDIAN)
+
+        Bukkit.addRecipe(recipe)
+    }
+
     val customRecipes = listOf(
         makeKey("goldenHeadRecipe"),
         makeKey("baseCompassRecipe"),
-        makeKey("baseRecipe")
+        makeKey("baseRecipe"),
+        makeKey("obsidianDrillRecipe")
     )
 
     @EventHandler

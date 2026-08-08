@@ -4,7 +4,7 @@ import io.papermc.paper.command.brigadier.BasicCommand
 import io.papermc.paper.command.brigadier.CommandSourceStack
 import org.bukkit.entity.Player
 
-object BaseCommand : BasicCommand {
+object SelfKillCommand : BasicCommand {
     override fun execute(
         source: CommandSourceStack,
         args: Array<String>
@@ -13,13 +13,11 @@ object BaseCommand : BasicCommand {
 
         if (sender !is Player) return
 
-        if (!sender.isOp) {
-            sender.sendMessage("OP가 없어서 사용할 수 없습니다.")
-            return
-        }
-
-        sender.inventory.addItem(
-            BaseItem.create()
+        sender.setData(
+            makeKey("lastDeathReason"),
+            CustomDeathReason.SELF_DEATH
         )
+
+        sender.kill()
     }
 }

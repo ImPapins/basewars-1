@@ -5,6 +5,7 @@ package kr.kro.impapins.minecraft.baseWars
 import com.destroystokyo.paper.profile.PlayerProfile
 import io.papermc.paper.ban.BanListType
 import kr.kro.impapins.minecraft.baseWars.BaseCompassManager.remove
+import kr.kro.impapins.minecraft.baseWars.CombatManager.getCombatingID
 import kr.kro.impapins.minecraft.baseWars.CombatManager.isCombating
 import kr.kro.impapins.minecraft.baseWars.MarkerManager.removeMarker
 import kr.kro.impapins.minecraft.baseWars.TeamChatListener.hasChatted
@@ -13,43 +14,28 @@ import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.NamedTextColor
 import net.kyori.adventure.text.format.TextDecoration
 import net.kyori.adventure.title.Title
-import org.bukkit.BanEntry
-import org.bukkit.Bukkit
-import org.bukkit.Color
-import org.bukkit.GameMode
-import org.bukkit.Location
-import org.bukkit.Material
-import org.bukkit.Particle
-import org.bukkit.Sound
+import org.bukkit.*
 import org.bukkit.attribute.Attribute
 import org.bukkit.configuration.file.YamlConfiguration
-import org.bukkit.entity.ArmorStand
-import org.bukkit.entity.BlockDisplay
-import org.bukkit.entity.Display
-import org.bukkit.entity.Interaction
-import org.bukkit.entity.Player
-import org.bukkit.entity.TextDisplay
+import org.bukkit.entity.*
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
 import org.bukkit.event.entity.EntityDamageByEntityEvent
 import org.bukkit.event.inventory.InventoryClickEvent
 import org.bukkit.event.inventory.InventoryCloseEvent
 import org.bukkit.event.inventory.InventoryDragEvent
-import org.bukkit.event.player.AsyncPlayerChatEvent
-import org.bukkit.event.player.PlayerInteractAtEntityEvent
-import org.bukkit.event.player.PlayerInteractEvent
-import org.bukkit.event.player.PlayerJoinEvent
-import org.bukkit.event.player.PlayerQuitEvent
-import org.bukkit.event.player.PlayerRespawnEvent
+import org.bukkit.event.player.*
 import org.bukkit.inventory.EquipmentSlot
 import org.bukkit.inventory.Inventory
 import org.bukkit.inventory.ItemStack
 import org.bukkit.persistence.PersistentDataType
+import org.bukkit.potion.PotionEffect
+import org.bukkit.potion.PotionEffectType
 import org.bukkit.scheduler.BukkitTask
 import java.io.File
 import java.time.Duration
 import java.time.Instant
-import java.util.UUID
+import java.util.*
 
 object BaseManager : Listener {
     val bases: MutableMap<UUID, BaseEntity> = mutableMapOf()
@@ -61,10 +47,10 @@ object BaseManager : Listener {
         100.0,
         300.0,
         500.0,
+        750.0,
         1000.0,
-        2000.0,
-        3000.0,
-        5000.0
+        1500.0,
+        2500.0
     )
 
     val baseStorageSize: List<Int> = listOf(
@@ -159,10 +145,7 @@ object BaseManager : Listener {
         for ((id, base) in bases) {
             val path = "bases.$id"
 
-            config.set("$path.world", base.location.world.name)
-            config.set("$path.x", base.location.x)
-            config.set("$path.y", base.location.y)
-            config.set("$path.z", base.location.z)
+            config.set("$path.loc", base.location)
 
             config.set("$path.baseTeam", base.info.baseTeam)
             config.set("$path.name", base.info.name)
@@ -196,14 +179,7 @@ object BaseManager : Listener {
         for (idString in section.getKeys(false)) {
             val path = "bases.$idString"
 
-            val world = Bukkit.getWorld(config.getString("$path.world")!!) ?: continue
-
-            val location = Location(
-                world,
-                config.getDouble("$path.x"),
-                config.getDouble("$path.y"),
-                config.getDouble("$path.z")
-            )
+            val location = config.getLocation("$path.loc")!!
 
             val info = BaseInfo(
                 baseTeam = config.getString("$path.baseTeam")!!,
@@ -380,7 +356,6 @@ object BaseManager : Listener {
         bukkitRunnable {
             bases.values.forEach {
                 it.checkAlarm()
-                it.checkTrap()
             }
         }.runTaskTimer(plugin, 20L, 20L)
     }
@@ -432,12 +407,27 @@ object BaseManager : Listener {
             }
         }
 
+        val hasOtherBase = bases.values.any {
+            it !== base && it.info.baseTeam == base.info.baseTeam
+        }
+
+        val eliminated = !hasOtherBase
+
         Bukkit.broadcast(
             Component.text(
                 "${base.info.baseTeam} 팀의 기지가 ${name}에게 파괴되었습니다!",
                 NamedTextColor.RED
             )
         )
+
+        if (eliminated) {
+            Bukkit.broadcast(
+                Component.text(
+                    "${base.info.baseTeam} 팀이 탈락했습니다!",
+                    NamedTextColor.RED
+                )
+            )
+        }
 
         Bukkit.getOnlinePlayers().forEach { player ->
             player.playSound(
@@ -477,6 +467,19 @@ object BaseManager : Listener {
 
         bases.remove(base.id)
         pendingRespawn.removeAll(base.info.spawnPlayers)
+
+        if (eliminated) {
+            val team = TeamManager.teams.values.first { it.name == base.info.baseTeam }
+
+            team.eliminated = true
+            team.members.forEach {
+                Bukkit.getPlayer(it)?.kick(
+                    Component.text("당신의 팀은 망했습니다 xx")
+                )
+            }
+
+            TeamManager.save()
+        }
 
         save()
     }
@@ -745,6 +748,17 @@ object BaseManager : Listener {
         val block = player.location.clone().add(0.0, 1.0, 0.0).block
         val location = block.location
 
+        if (block.type != Material.AIR) {
+            player.sendMessage(
+                Component.text(
+                    "공간이 부족합니다.",
+                    NamedTextColor.RED
+                )
+            )
+            event.isCancelled = true
+            return
+        }
+
         if (bases.values.any { it.location.isWithinXZ(location, BASE_MIN_DISTANCE) }) {
             player.sendMessage(
                 Component.text(
@@ -926,30 +940,29 @@ object BaseManager : Listener {
 
                             4 -> {
                                 add(line("▶ 창고가 ").append(value("27칸")).append(line("으로 확장됩니다.")))
-                                add(line("▶ 기지 체력이 ").append(value("1000")).append(line("이 됩니다.")))
+                                add(line("▶ 기지 체력이 ").append(value("750")).append(line("이 됩니다.")))
                                 add(danger("▶ 알람이 추가됩니다."))
-                                add(Component.text("  • 반경 50칸 적 감지", NamedTextColor.DARK_GRAY).decoration(TextDecoration.ITALIC, false))
+                                add(Component.text("  • 반경 20칸 적 감지", NamedTextColor.DARK_GRAY).decoration(TextDecoration.ITALIC, false))
                                 add(Component.text("  • 팀원 전체에게 알림", NamedTextColor.DARK_GRAY).decoration(TextDecoration.ITALIC, false))
-                                add(Component.text("  • 적에게 발광 효과", NamedTextColor.DARK_GRAY).decoration(TextDecoration.ITALIC, false))
                             }
 
                             5 -> {
                                 add(line("▶ 창고가 ").append(value("36칸")).append(line("으로 확장됩니다.")))
-                                add(line("▶ 기지 체력이 ").append(value("2000")).append(line("이 됩니다.")))
-                                add(trap("▶ 함정이 추가됩니다."))
-                                add(Component.text("  • 반경 10칸 적에게 구속, 나약함", NamedTextColor.DARK_GRAY).decoration(TextDecoration.ITALIC, false))
+                                add(line("▶ 기지 체력이 ").append(value("1000")).append(line("이 됩니다.")))
+                                add(danger("▶ 알람 범위가 50칸으로 증가합니다."))
                             }
 
                             6 -> {
                                 add(line("▶ 창고가 ").append(value("45칸")).append(line("으로 확장됩니다.")))
-                                add(line("▶ 기지 체력이 ").append(value("3000")).append(line("이 됩니다.")))
-                                add(danger("▶ 알람 범위가 100칸으로 증가합니다."))
+                                add(line("▶ 기지 체력이 ").append(value("1500")).append(line("이 됩니다.")))
+                                add(trap("▶ 함정이 추가됩니다."))
+                                add(Component.text("  • 기지를 공격한 적에게 구속, 발광 5초", NamedTextColor.DARK_GRAY).decoration(TextDecoration.ITALIC, false))
                             }
 
                             7 -> {
                                 add(line("▶ 창고가 ").append(value("54칸")).append(line("으로 확장됩니다.")))
-                                add(line("▶ 기지 체력이 ").append(value("5000")).append(line("이 됩니다.")))
-                                add(trap("▶ 함정 범위가 25칸으로 증가합니다."))
+                                add(line("▶ 기지 체력이 ").append(value("2500")).append(line("이 됩니다.")))
+                                add(danger("▶ 알람 범위가 100칸으로 증가합니다."))
                             }
                         }
 
@@ -1447,7 +1460,21 @@ object BaseManager : Listener {
 
 
                 31 -> {
-                    player.teleport(base.info.spawnLocation)
+                    StayStillManager.waitForStill(player) {
+                        player.teleport(base.info.spawnLocation)
+
+                        player.sendMessage(
+                            Component.text("텔레포트에 성공했습니다.")
+                        )
+
+                        player.playSound(
+                            player.location,
+                            Sound.BLOCK_NOTE_BLOCK_BELL,
+                            1f,
+                            2f
+                        )
+                    }
+
                     player.closeInventory()
                 }
 
@@ -1564,7 +1591,6 @@ object BaseManager : Listener {
         val holder = inventory.holder ?: return
 
         when (holder) {
-
             is StorageHolder -> {
                 val base = holder.base
 
@@ -1622,6 +1648,11 @@ object BaseManager : Listener {
             player.uniqueId in it.info.spawnPlayers
         }
 
+    fun getSpawnBase(uuid: UUID): BaseEntity? =
+        bases.values.firstOrNull {
+            uuid in it.info.spawnPlayers
+        }
+
     fun setSpawnLocation(base: BaseEntity, player: Player): Component {
         if (!player.location.isWithinXZ(base.location, 100.0)) {
             return Component.text("기지 반경 100블록 안에서만 스폰 위치를 설정할 수 있습니다.")
@@ -1667,7 +1698,12 @@ object BaseManager : Listener {
 
         save()
 
-        val base = getSpawnBase(player) ?: return
+        val base = getSpawnBase(player)
+
+        if (base == null) {
+            event.joinMessage(null)
+            return
+        }
 
         player.teleport(base.info.spawnLocation)
         bukkitRunnable {
@@ -1692,19 +1728,19 @@ object BaseManager : Listener {
         renaming.remove(uuid)
         renameTasks.remove(uuid)?.cancel()
 
-        if (isCombating(uuid)) {
-            Bukkit.broadcast(
-                Component.text(
-                    "[알림] ${player.name}이(가) 추하게 싸우다가 게임을 나가서 죽었습니다"
-                )
-            )
-            player.health = 0.0
+        val combating = getCombatingID(uuid)
+
+        if (combating != null) {
+            player.setData(makeKey("lastDeathReason"), CustomDeathReason.COMBAT_LEAVE)
+            player.damage(100000.0, Bukkit.getPlayer(combating))
         }
 
         remove(player)
         removeMarker(player)
         hasChatted.remove(uuid)
     }
+
+    private val trappedPlayers = mutableMapOf<UUID, Long>()
 
     @EventHandler
     fun onBaseDamage(event: EntityDamageByEntityEvent) {
@@ -1739,6 +1775,51 @@ object BaseManager : Listener {
             0.2,
             0.0
         )
+
+        if (base.info.level >= 6) {
+            val now = System.currentTimeMillis()
+            val lastTrap = trappedPlayers[player.uniqueId] ?: 0
+            val isNew = now - lastTrap >= 5_000L
+            trappedPlayers[player.uniqueId] = System.currentTimeMillis() + 5_000L
+
+            player.addPotionEffect(
+                PotionEffect(
+                    PotionEffectType.SLOWNESS,
+                    100,
+                    0,      // 구속
+                    true,
+                    false,
+                    true
+                )
+            )
+
+            player.addPotionEffect(
+                PotionEffect(
+                    PotionEffectType.GLOWING,
+                    100,
+                    0,      // 발광
+                    true,
+                    false,
+                    true
+                )
+            )
+
+            if (isNew) {
+                player.sendMessage(
+                    Component.text(
+                        "함정이 발동했습니다! 디버프를 받습니다.",
+                        NamedTextColor.DARK_RED
+                    )
+                )
+
+                player.playSound(
+                    player.location,
+                    Sound.BLOCK_RESPAWN_ANCHOR_DEPLETE,
+                    1f,
+                    0.8f
+                )
+            }
+        }
 
         if (base.info.hp <= 0.0) {
             removeBase(base, player.name)

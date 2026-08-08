@@ -5,11 +5,9 @@ import net.kyori.adventure.text.format.NamedTextColor
 import org.bukkit.Bukkit
 import org.bukkit.HeightMap
 import org.bukkit.Location
-import org.bukkit.Material
 import org.bukkit.OfflinePlayer
 import org.bukkit.World
 import org.bukkit.configuration.file.YamlConfiguration
-import org.bukkit.entity.Player
 import java.io.File
 import java.util.UUID
 import kotlin.random.Random
@@ -36,9 +34,12 @@ object TeamManager {
                 "$path.members",
                 team.members.map(UUID::toString)
             )
+
             team.teamSpawnLocation?.let { location ->
                 config.set("$path.teamSpawnLocation", location)
             }
+
+            config.set("$path.eliminated", team.eliminated.toString())
         }
 
         config.save(file)
@@ -88,12 +89,17 @@ object TeamManager {
                 config.getLocation("$path.teamSpawnLocation")
                     ?: randomTeamSpawn(Bukkit.getWorld("world")!!)
 
+            val eliminated = runCatching {
+                config.getBoolean("$path.eliminated")
+            }.getOrElse { false }
+
             teams[id] = BaseTeam(
                 name,
                 color,
                 leader,
                 members,
-                teamSpawnLocation
+                teamSpawnLocation,
+                eliminated
             )
         }
 
